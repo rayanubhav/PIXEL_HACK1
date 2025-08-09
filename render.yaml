@@ -9,9 +9,8 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.9 # Or your preferred Python version
+      # FIX: Declare secret keys without values.
+      # Render will prompt you to enter these in the UI.
       - key: FOURSQUARE_API_KEY
-        fromSecret: true
       - key: JWT_SECRET_KEY
-        fromSecret: true
       - key: MONGO_URI
-        fromSecret: true
