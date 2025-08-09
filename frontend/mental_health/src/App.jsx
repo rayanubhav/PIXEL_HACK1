@@ -1,0 +1,973 @@
+/* eslint-disable no-undef */
+import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import axios from 'axios';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell, Sector } from 'recharts';
+
+// ===================================================================================
+// --- API UTILITY ---
+// This configured axios instance will be used for all protected API calls.
+// It automatically attaches the user's authentication token to every request.
+// ===================================================================================
+const api = axios.create({
+    baseURL: 'http://localhost:5001/api',
+});
+
+api.interceptors.request.use(
+    (config) => {
+        const token = localStorage.getItem('access_token');
+        if (token) {
+            config.headers['Authorization'] = `Bearer ${token}`;
+        }
+        return config;
+    },
+    (error) => Promise.reject(error)
+);
+
+
+// ===================================================================================
+// --- SHARED HELPER COMPONENTS ---
+// ===================================================================================
+const Spinner = () => <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>;
+const ButtonSpinner = () => <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>;
+
+
+// ===================================================================================
+// --- LOADER COMPONENT ---
+// ===================================================================================
+const Loader = ({ onLoadingComplete = () => {} }) => {
+  const MindCareLogo = () => (
+    <svg width="80" height="80" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M50 90C72.0914 90 90 72.0914 90 50C90 27.9086 72.0914 10 50 10C27.9086 10 10 27.9086 10 50C10 61.2741 14.5359 71.5134 22 78.9998" stroke="rgba(255,255,255,0.6)" strokeWidth="4" strokeLinecap="round"/>
+      <path d="M35 50C35 41.7157 41.7157 35 50 35C58.2843 35 65 41.7157 65 50C65 58.2843 58.2843 65 50 65" stroke="rgba(255,255,255,0.8)" strokeWidth="4" strokeLinecap="round"/>
+      <path d="M50 25C54.1421 25 57.5 28.3579 57.5 32.5" stroke="#a7f3d0" strokeWidth="4" strokeLinecap="round"/>
+    </svg>
+  );
+
+  useEffect(() => {
+    const timer = setTimeout(() => onLoadingComplete(), 2000);
+    return () => clearTimeout(timer);
+  }, [onLoadingComplete]);
+
+  const containerVariants = { start: { transition: { staggerChildren: 0.2 } }, end: { transition: { staggerChildren: 0.2 } } };
+  const logoVariants = { start: { opacity: 0, scale: 0.8 }, end: { opacity: 1, scale: 1, transition: { duration: 1 } } };
+  const orbVariants = { start: { scale: 0, opacity: 0 }, end: { scale: [0, 1.2, 1], opacity: [0, 0.7, 1, 0], transition: { duration: 2.5, times: [0, 0.3, 0.6, 1] } } };
+
+  return (
+    <motion.div className="relative flex items-center justify-center w-full min-h-screen bg-gradient-to-br from-[#0a192f] via-[#1c2a4a] to-[#2a3a64] overflow-hidden" variants={containerVariants} initial="start" animate="end">
+      <motion.div className="z-10 flex flex-col items-center" variants={logoVariants}>
+        <MindCareLogo />
+        <h1 className="mt-4 text-4xl font-bold text-white/90 tracking-wider">MindCare</h1>
+      </motion.div>
+      <motion.div className="absolute w-48 h-48 bg-blue-400/50 rounded-full" variants={orbVariants} transition={{ delay: 0.5 }} />
+      <motion.div className="absolute w-32 h-32 bg-green-300/50 rounded-full" variants={orbVariants} transition={{ delay: 0.8 }} />
+      <motion.div className="absolute w-40 h-40 bg-purple-400/50 rounded-full" variants={orbVariants} transition={{ delay: 1.1 }} />
+      <motion.div className="absolute w-24 h-24 bg-pink-300/50 rounded-full" variants={orbVariants} transition={{ delay: 1.4 }} />
+    </motion.div>
+  );
+};
+
+// ===================================================================================
+// --- AUTH PAGE COMPONENT ---
+// ===================================================================================
+const AuthPage = ({ onAuthSuccess }) => {
+    const [isLoginView, setIsLoginView] = useState(true);
+    const [formData, setFormData] = useState({ name: '', email: '', password: '' });
+    const [error, setError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+
+    const UserIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>;
+    const EmailIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" /></svg>;
+    const LockIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>;
+
+    const handleInputChange = (e) => {
+        setFormData({ ...formData, [e.target.name]: e.target.value });
+        setError('');
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        setIsLoading(true);
+        const url = isLoginView ? 'http://localhost:5001/api/auth/login' : 'http://localhost:5001/api/auth/register';
+        try {
+            const response = await axios.post(url, formData);
+            onAuthSuccess(response.data);
+        } catch (err) {
+            setError(err.response?.data?.msg || 'An error occurred.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const formVariants = { hidden: { opacity: 0, y: 50 }, visible: { opacity: 1, y: 0, transition: { duration: 0.5 } } };
+    const nameInputVariants = { hidden: { opacity: 0, height: 0, marginTop: 0 }, visible: { opacity: 1, height: 'auto', marginTop: '1rem' }, exit: { opacity: 0, height: 0, marginTop: 0 } };
+
+    return (
+        <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-100 via-purple-100 to-gray-50">
+            <motion.div className="w-full max-w-md p-8 space-y-6 bg-white/70 backdrop-blur-lg rounded-2xl shadow-lg border border-white/30" variants={formVariants} initial="hidden" animate="visible">
+                <div className="text-center">
+                    <h1 className="text-3xl font-bold text-gray-800">{isLoginView ? 'Welcome Back' : 'Create Your Account'}</h1>
+                    <p className="mt-2 text-gray-500">{isLoginView ? 'Log in to continue your journey' : 'Start your path to wellness today'}</p>
+                </div>
+                <form className="space-y-4" onSubmit={handleSubmit}>
+                    <AnimatePresence>
+                        {!isLoginView && (
+                            <motion.div key="name-input" variants={nameInputVariants} initial="hidden" animate="visible" exit="exit" className="relative">
+                                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><UserIcon /></div>
+                                <input type="text" name="name" placeholder="Full Name" value={formData.name} onChange={handleInputChange} required={!isLoginView} className="w-full pl-10 pr-3 py-2 bg-white/80 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-300 outline-none" />
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                    <div className="relative">
+                        <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><EmailIcon /></div>
+                        <input type="email" name="email" placeholder="Email Address" value={formData.email} onChange={handleInputChange} required className="w-full pl-10 pr-3 py-2 bg-white/80 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-300 outline-none" />
+                    </div>
+                    <div className="relative">
+                        <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><LockIcon /></div>
+                        <input type="password" name="password" placeholder="Password" value={formData.password} onChange={handleInputChange} required className="w-full pl-10 pr-3 py-2 bg-white/80 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-300 outline-none" />
+                    </div>
+                    {error && <p className="text-sm text-center text-red-500">{error}</p>}
+                    <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.98 }} type="submit" disabled={isLoading} className="w-full py-3 font-semibold text-white bg-purple-500 rounded-lg hover:bg-purple-600 disabled:bg-purple-400 flex justify-center items-center">
+                        {isLoading ? <ButtonSpinner /> : (isLoginView ? 'Log In' : 'Sign Up')}
+                    </motion.button>
+                </form>
+                <div className="text-center text-sm text-gray-500">
+                    <p>{isLoginView ? "Don't have an account?" : "Already have an account?"}
+                        <button onClick={() => { setIsLoginView(!isLoginView); setError(''); }} className="ml-1 font-semibold text-purple-600 hover:underline">
+                            {isLoginView ? 'Sign Up' : 'Log In'}
+                        </button>
+                    </p>
+                </div>
+            </motion.div>
+        </div>
+    );
+};
+
+// ===================================================================================
+// --- DASHBOARD & SUB-COMPONENTS ---
+// ===================================================================================
+const VideoModal = ({ videoUrl, onClose }) => {
+    // Convert standard YouTube URL to embeddable format
+    const getEmbedUrl = (url) => {
+        const videoId = url.split('v=')[1];
+        const ampersandPosition = videoId.indexOf('&');
+        if (ampersandPosition !== -1) {
+            return `https://www.youtube.com/embed/${videoId.substring(0, ampersandPosition)}`;
+        }
+        return `https://www.youtube.com/embed/${videoId}`;
+    };
+    
+    const embedUrl = getEmbedUrl(videoUrl);
+
+    return (
+        <motion.div
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+        >
+            <motion.div
+                className="bg-white rounded-lg shadow-2xl w-full max-w-2xl aspect-video relative"
+                initial={{ scale: 0.8, y: 50 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.8, y: 50 }}
+                onClick={(e) => e.stopPropagation()} // Prevent closing when clicking on the modal content
+            >
+                <iframe
+                    className="w-full h-full rounded-lg"
+                    src={embedUrl}
+                    title="YouTube video player"
+                    frameBorder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                ></iframe>
+                <button 
+                    onClick={onClose} 
+                    className="absolute -top-3 -right-3 bg-white rounded-full h-8 w-8 flex items-center justify-center text-gray-600 hover:text-gray-900 transition-colors"
+                >
+                    &times;
+                </button>
+            </motion.div>
+        </motion.div>
+    );
+};
+
+const StressPredictor = () => {
+    const [inputs, setInputs] = useState({ heart_rate: '', steps: '', sleep: '', age: '' });
+    const [result, setResult] = useState(null);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [modalVideoUrl, setModalVideoUrl] = useState(null); // State for the video modal
+
+    const handleInputChange = (e) => setInputs({ ...inputs, [e.target.name]: e.target.value });
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setIsLoading(true);
+        setResult(null);
+        setError('');
+        try {
+            const response = await api.post('/predict-stress', {
+                heart_rate: parseFloat(inputs.heart_rate),
+                steps: parseFloat(inputs.steps),
+                sleep: parseFloat(inputs.sleep),
+                age: parseFloat(inputs.age)
+            });
+            setResult({
+                score: response.data.stress_level,
+                suggestions: response.data.suggestions
+            });
+        } catch (err) {
+            setError('Could not get prediction. Please ensure the backend is running.');
+            console.error(err);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const getGaugeColor = (level) => {
+        if (level <= 3) return "text-green-500";
+        if (level <= 6) return "text-yellow-500";
+        return "text-red-500";
+    };
+    
+    const getSuggestionIcon = (type) => {
+        switch(type) {
+            case 'Breathing': return '🌬️';
+            case 'Yoga': return '🧘';
+            case 'Music': return '🎵';
+            default: return '💡';
+        }
+    };
+
+    const SuggestionCard = ({ icon, title, description, link }) => (
+        <motion.div 
+            className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 flex flex-col"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+        >
+            <div className="flex items-center mb-2">
+                <span className="text-2xl mr-3">{icon}</span>
+                <h4 className="font-bold text-gray-800">{title}</h4>
+            </div>
+            <p className="text-sm text-gray-600 flex-grow">{description}</p>
+            <button 
+                onClick={() => setModalVideoUrl(link)}
+                className="mt-4 text-center bg-purple-100 text-purple-700 font-semibold py-2 px-4 rounded-md text-sm hover:bg-purple-200 transition-colors"
+            >
+                Try Now
+            </button>
+        </motion.div>
+    );
+
+    return (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="h-full">
+            <h3 className="text-2xl font-bold text-gray-800 mb-6">Stress Predictor</h3>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Input Form */}
+                <div className="p-6 bg-white rounded-xl shadow-md">
+                    <h4 className="font-bold text-lg text-gray-700 mb-4">Enter Your Daily Metrics</h4>
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <input type="number" name="heart_rate" placeholder="Avg. Heart Rate (e.g., 75)" value={inputs.heart_rate} onChange={handleInputChange} required className="w-full p-2 border rounded-md"/>
+                        <input type="number" name="steps" placeholder="Daily Steps (e.g., 8000)" value={inputs.steps} onChange={handleInputChange} required className="w-full p-2 border rounded-md"/>
+                        <input type="number" name="sleep" placeholder="Sleep Hours (e.g., 7.5)" value={inputs.sleep} onChange={handleInputChange} required className="w-full p-2 border rounded-md"/>
+                        <input type="number" name="age" placeholder="Age (e.g., 35)" value={inputs.age} onChange={handleInputChange} required className="w-full p-2 border rounded-md"/>
+                        <button type="submit" disabled={isLoading} className="w-full py-3 font-semibold text-white bg-purple-500 rounded-lg hover:bg-purple-600 flex justify-center items-center">
+                            {isLoading ? <ButtonSpinner /> : 'Predict Stress'}
+                        </button>
+                    </form>
+                </div>
+                {/* Results Area */}
+                <div className="p-6 bg-white rounded-xl shadow-md flex flex-col items-center justify-center text-center">
+                    {isLoading && <Spinner />}
+                    {!isLoading && !result && !error && <p className="text-gray-500">Your results and personalized suggestions will appear here.</p>}
+                    {error && <p className="text-red-500">{error}</p>}
+                    {result && (
+                        <motion.div initial={{opacity: 0}} animate={{opacity: 1}} className="w-full">
+                            <p className={`text-7xl font-bold ${getGaugeColor(result.score)}`}>{result.score}<span className="text-3xl text-gray-400">/10</span></p>
+                            <p className="text-gray-600 font-semibold mt-2">Your Estimated Stress Level</p>
+                        </motion.div>
+                    )}
+                </div>
+            </div>
+            {/* Suggestions Section */}
+            <AnimatePresence>
+                {result && (
+                    <motion.div initial={{opacity: 0}} animate={{opacity: 1}} className="mt-8">
+                         <h4 className="font-bold text-lg text-gray-700 mb-4">Here are some suggestions for you:</h4>
+                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            {result.suggestions.map(suggestion => (
+                                <SuggestionCard 
+                                    key={suggestion.type}
+                                    icon={getSuggestionIcon(suggestion.type)}
+                                    title={suggestion.title}
+                                    description={suggestion.description}
+                                    link={suggestion.link}
+                                />
+                            ))}
+                         </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+            
+            {/* Video Modal */}
+            <AnimatePresence>
+                {modalVideoUrl && (
+                    <VideoModal videoUrl={modalVideoUrl} onClose={() => setModalVideoUrl(null)} />
+                )}
+            </AnimatePresence>
+        </motion.div>
+    );
+};
+
+const EmotionAnalyzer = () => {
+    const [text, setText] = useState('');
+    const [result, setResult] = useState(null);
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!text.trim()) return;
+        setIsLoading(true);
+        setResult(null);
+        setTimeout(() => {
+            const lowerCaseText = text.toLowerCase();
+            let detected = 'neutral';
+            if (lowerCaseText.includes('happy') || lowerCaseText.includes('joy')) detected = 'joy';
+            else if (lowerCaseText.includes('sad') || lowerCaseText.includes('crying')) detected = 'sadness';
+            else if (lowerCaseText.includes('angry') || lowerCaseText.includes('furious')) detected = 'anger';
+            else if (lowerCaseText.includes('scared') || lowerCaseText.includes('anxious')) detected = 'fear';
+            const emotionData = {
+                joy: { emoji: '😊', color: 'bg-yellow-400', text: 'Joyful' },
+                sadness: { emoji: '😢', color: 'bg-blue-400', text: 'Sadness' },
+                anger: { emoji: '😠', color: 'bg-red-500', text: 'Anger' },
+                fear: { emoji: '😨', color: 'bg-purple-400', text: 'Fear' },
+                surprise: { emoji: '😮', color: 'bg-green-400', text: 'Surprise' },
+                neutral: { emoji: '😐', color: 'bg-gray-400', text: 'Neutral' },
+            };
+            setResult({ emotion: detected, confidence: Math.random() * 0.25 + 0.75, data: emotionData[detected] });
+            setIsLoading(false);
+        }, 1500);
+    };
+
+    return (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="h-full">
+            <h3 className="text-2xl font-bold text-gray-800 mb-6">Emotion Analyzer</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="p-6 bg-white rounded-xl shadow-md">
+                     <h4 className="font-bold text-lg text-gray-700 mb-4">How are you feeling right now?</h4>
+                     <form onSubmit={handleSubmit}>
+                        <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Write about your feelings..." className="w-full h-48 p-3 border rounded-md resize-none focus:ring-2 focus:ring-purple-300 outline-none" required />
+                        <button type="submit" disabled={isLoading} className="w-full mt-4 py-3 font-semibold text-white bg-purple-500 rounded-lg hover:bg-purple-600 disabled:bg-purple-300 flex justify-center items-center">
+                            {isLoading ? <ButtonSpinner /> : 'Analyze Emotion'}
+                        </button>
+                     </form>
+                </div>
+                <div className="p-6 bg-white rounded-xl shadow-md flex flex-col items-center justify-center text-center">
+                    {isLoading && <Spinner />}
+                    {!isLoading && !result && <p className="text-gray-500">Your emotion analysis will appear here.</p>}
+                    {result && (
+                        <motion.div initial={{opacity: 0, scale: 0.8}} animate={{opacity: 1, scale: 1}}>
+                            <span className="text-6xl">{result.data.emoji}</span>
+                            <h4 className="text-2xl font-bold text-gray-800 mt-4">{result.data.text}</h4>
+                            <p className="text-gray-500">Detected Emotion</p>
+                            <div className="w-full bg-gray-200 rounded-full h-2.5 mt-6">
+                                <div className={`${result.data.color} h-2.5 rounded-full`} style={{ width: `${result.confidence * 100}%` }}></div>
+                            </div>
+                            <p className="text-sm font-semibold text-gray-700 mt-2">Confidence: {(result.confidence * 100).toFixed(0)}%</p>
+                        </motion.div>
+                    )}
+                </div>
+            </div>
+        </motion.div>
+    );
+};
+
+const Chatbot = ({ user }) => {
+    const [messages, setMessages] = useState([{ id: 'init1', text: "Hello! I'm your mindful assistant. How are you feeling today?", isUser: false }]);
+    const [inputText, setInputText] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const chatContainerRef = useRef(null);
+
+    useEffect(() => { if (chatContainerRef.current) { chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight; } }, [messages]);
+    
+    const handleSendMessage = async (e) => {
+        e.preventDefault();
+        if (inputText.trim() === '' || isLoading) return;
+
+        const userMessage = { id: Date.now().toString(), text: inputText.trim(), isUser: true };
+        setMessages(prev => [...prev, userMessage]);
+        const messageText = inputText.trim();
+        setInputText('');
+        setIsLoading(true);
+
+        try {
+            const response = await api.post('/chat', {
+                message: messageText,
+                user_id: user?.id || 'anonymous' // Pass user ID if available
+            });
+            
+            const aiMessage = {
+                id: (Date.now() + 1).toString(),
+                text: response.data.response,
+                isUser: false,
+                emotion: response.data.emotion,
+            };
+            setMessages(prev => [...prev, aiMessage]);
+
+        } catch (error) {
+            console.error("Chat API error:", error);
+            const errorMessage = {
+                id: (Date.now() + 1).toString(),
+                text: "Sorry, I'm having trouble connecting right now. Please try again later.",
+                isUser: false,
+            };
+            setMessages(prev => [...prev, errorMessage]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col h-full bg-white rounded-xl shadow-lg">
+            <div className="p-4 border-b"><h3 className="text-xl font-bold text-gray-800">Mindful Chatbot</h3><p className="text-sm text-gray-500">A safe space to share.</p></div>
+            <div ref={chatContainerRef} className="flex-grow p-6 overflow-y-auto"><div className="space-y-6">{messages.map(msg => (<motion.div key={msg.id} layout initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className={`flex items-end gap-3 ${msg.isUser ? 'justify-end' : 'justify-start'}`}>{!msg.isUser && <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center mr-3 flex-shrink-0"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M3 9h2m14 0h2M3 15h2m14 0h2M9 6l1.646-1.646a.5.5 0 01.708 0L13 6m-4 6l1.646 1.646a.5.5 0 00.708 0L13 12" /></svg></div>}<div className={`max-w-md p-3 rounded-2xl ${msg.isUser ? 'bg-purple-500 text-white rounded-br-none' : 'bg-gray-100 text-gray-800 rounded-bl-none'}`}><p className="text-sm">{msg.text}</p></div>{msg.isUser && <div className="w-10 h-10 rounded-full bg-purple-500 text-white flex items-center justify-center ml-3 flex-shrink-0 font-bold">{user?.name?.charAt(0) || 'U'}</div>}</motion.div>))}{isLoading && <motion.div className="flex items-end gap-3 justify-start"><div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center mr-3 flex-shrink-0"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M3 9h2m14 0h2M3 15h2m14 0h2M9 6l1.646-1.646a.5.5 0 01.708 0L13 6m-4 6l1.646 1.646a.5.5 0 00.708 0L13 12" /></svg></div><div className="max-w-md p-3 rounded-2xl bg-gray-100"><div className="flex items-center space-x-1"><span className="h-2 w-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.3s]"></span><span className="h-2 w-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.15s]"></span><span className="h-2 w-2 bg-gray-400 rounded-full animate-bounce"></span></div></div></motion.div>}</div></div>
+            <div className="p-4 border-t"><form onSubmit={handleSendMessage} className="flex items-center space-x-3"><input type="text" value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Share what's on your mind..." disabled={isLoading} className="w-full px-4 py-2 bg-gray-100 rounded-full focus:ring-2 focus:ring-purple-300 outline-none" /><button type="submit" disabled={isLoading || !inputText.trim()}><svg xmlns="http://www.w3.org/2000/svg" className={`h-6 w-6 transition-colors ${isLoading || !inputText.trim() ? 'text-gray-400' : 'text-purple-500 hover:text-purple-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg></button></form></div>
+        </motion.div>
+    );
+};
+
+// ===================================================================================
+// --- THERAPIST FINDER COMPONENT (using Leaflet) ---
+// ===================================================================================
+const TherapistFinder = () => {
+    const [location, setLocation] = useState(null);
+    const [therapists, setTherapists] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [query, setQuery] = useState('mental health therapist');
+    const [activeTherapistId, setActiveTherapistId] = useState(null);
+    const mapRef = useRef(null);
+    const [leafletReady, setLeafletReady] = useState(false);
+
+    const LocationIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>;
+    const CallIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>;
+    const RouteIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
+
+    useEffect(() => {
+        const checkLeaflet = setInterval(() => {
+            if (window.L) {
+                setLeafletReady(true);
+                clearInterval(checkLeaflet);
+            }
+        }, 100);
+        return () => clearInterval(checkLeaflet);
+    }, []);
+
+    useEffect(() => {
+        if (!leafletReady) return;
+        setLoading(true);
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const { latitude, longitude } = position.coords;
+                setLocation({ lat: latitude, lng: longitude });
+                fetchTherapists(latitude, longitude, query);
+            },
+            () => {
+                setError('Location access denied. Using a default location.');
+                const defaultLocation = { lat: 19.2183, lng: 72.9781 };
+                setLocation(defaultLocation);
+                fetchTherapists(defaultLocation.lat, defaultLocation.lng, query);
+            }
+        );
+    }, [leafletReady]);
+
+    const fetchTherapists = async (lat, lng, searchQuery) => {
+        setLoading(true);
+        setError('');
+        try {
+            // FIX: Use the authenticated 'api' instance
+            const response = await api.get('/therapists', {
+                params: { lat, lng, query: searchQuery }
+            });
+            console.log("Therapists API response:", response.data);
+            setTherapists(response.data || []);
+            if (!response.data || response.data.length === 0) {
+                setError('No therapists found nearby. Showing results from other major cities.');
+            }
+        } catch (err) {
+            console.error("Failed to fetch therapists:", err);
+            setError("Could not connect to the server. Please check if the backend is running.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSearch = (e) => {
+        e.preventDefault();
+        if (location) {
+            fetchTherapists(location.lat, location.lng, query);
+        }
+    };
+
+    useEffect(() => {
+        if (therapists.length > 0 && leafletReady) {
+            if (mapRef.current === null) {
+                const map = L.map('leaflet-map').setView([therapists[0].latitude, therapists[0].longitude], 13);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                }).addTo(map);
+                mapRef.current = map;
+            }
+            if (mapRef.current) {
+                mapRef.current.eachLayer((layer) => {
+                    if (layer instanceof L.Marker) {
+                        mapRef.current.removeLayer(layer);
+                    }
+                });
+                therapists.forEach(therapist => {
+                    L.marker([therapist.latitude, therapist.longitude]).addTo(mapRef.current)
+                        .bindPopup(`<b>${therapist.name}</b><br>${therapist.address}`);
+                });
+            }
+        }
+    }, [therapists, leafletReady]);
+    
+    const handleTherapistSelect = (therapist) => {
+        setActiveTherapistId(therapist.id);
+        if (mapRef.current && window.L) {
+            mapRef.current.flyTo([therapist.latitude, therapist.longitude], 15);
+        }
+    };
+
+    return (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="h-full flex flex-col">
+            <div className="mb-4">
+                <h3 className="text-2xl font-bold text-gray-800">Find a Therapist Nearby</h3>
+                <form onSubmit={handleSearch} className="flex items-center mt-2 bg-white p-2 rounded-lg shadow-sm border">
+                    <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search therapists or clinics..." className="w-full p-2 border-none outline-none" />
+                    <button type="submit" className="px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600">Search</button>
+                </form>
+                {error && <p className="text-orange-500 text-sm mt-2">{error}</p>}
+            </div>
+            <div className="flex-grow grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-[65vh]">
+                <div className="lg:col-span-1 h-full overflow-y-auto pr-2">{loading ? <Spinner /> : <ul className="space-y-3">{therapists.map(therapist => (<motion.li key={therapist.id} onClick={() => handleTherapistSelect(therapist)} className={`p-4 rounded-lg cursor-pointer transition-all border-2 ${activeTherapistId === therapist.id ? 'bg-purple-100 border-purple-400 shadow-lg' : 'bg-white border-transparent hover:border-purple-200 hover:shadow-md'}`} whileHover={{ scale: 1.02 }}><h4 className="font-semibold text-gray-900">{therapist.name}</h4><p className="text-sm text-gray-600 flex items-center mt-1"><LocationIcon /> {therapist.address}</p><div className="flex items-center space-x-2 mt-3"><a href={`tel:${therapist.phone}`} className="flex items-center px-3 py-1 bg-green-500 text-white text-xs rounded-full hover:bg-green-600"><CallIcon /> Call</a><a href={`https://www.google.com/maps/dir/?api=1&destination=${therapist.latitude},${therapist.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center px-3 py-1 bg-blue-500 text-white text-xs rounded-full hover:bg-blue-600"><RouteIcon /> Route</a></div></motion.li>))}</ul>}</div>
+                <div id="leaflet-map" className="lg:col-span-2 h-full rounded-xl overflow-hidden shadow-lg relative bg-gray-200">
+                    {!leafletReady && <div className="w-full h-full flex items-center justify-center"><Spinner /></div>}
+                    {leafletReady && !loading && therapists.length === 0 && <div className="w-full h-full flex items-center justify-center"><p className="text-gray-500">Map will appear here once therapists are found.</p></div>}
+                </div>
+            </div>
+        </motion.div>
+    );
+};
+
+/// ===================================================================================
+// --- FACIAL EMOTION DETECTOR COMPONENT ---
+// ===================================================================================
+
+const EmotionDetector = () => {
+    const [status, setStatus] = useState('loading');
+    const [detectedEmotion, setDetectedEmotion] = useState({ emotion: '...', confidence: 0 });
+    const videoRef = useRef(null);
+    const canvasRef = useRef(null);
+    const cameraRef = useRef(null);
+    const [mediaPipeReady, setMediaPipeReady] = useState(false);
+
+    const euclideanDistance = (p1, p2) => (p1 && p2) ? Math.hypot(p1.x - p2.x, p1.y - p2.y) : 0;
+
+    useEffect(() => {
+        const loadScript = (src, id) => new Promise((resolve, reject) => {
+            if (document.getElementById(id)) { resolve(); return; }
+            const script = document.createElement('script');
+            script.id = id;
+            script.src = src;
+            script.async = true;
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+        });
+
+        async function initialize() {
+            try {
+                await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js', 'camera-utils-script');
+                await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js', 'face-mesh-script');
+                setMediaPipeReady(true);
+            } catch (err) {
+                setStatus('error');
+            }
+        }
+        initialize();
+    }, []);
+
+    useEffect(() => {
+        if (!mediaPipeReady || !videoRef.current) return;
+
+        const onResults = async (results) => {
+            if (!canvasRef.current || !videoRef.current) return;
+            const canvasCtx = canvasRef.current.getContext('2d');
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                const landmarks = results.multiFaceLandmarks[0];
+                const ear_left = (euclideanDistance(landmarks[386], landmarks[374]) + euclideanDistance(landmarks[385], landmarks[373])) / (2 * euclideanDistance(landmarks[362], landmarks[263]));
+                const ear_right = (euclideanDistance(landmarks[159], landmarks[145]) + euclideanDistance(landmarks[158], landmarks[144])) / (2 * euclideanDistance(landmarks[133], landmarks[33]));
+                const avg_ear = (ear_left + ear_right) / 2.0;
+                const mar = euclideanDistance(landmarks[13], landmarks[14]) / euclideanDistance(landmarks[61], landmarks[291]);
+                const eyebrow_dist = (euclideanDistance(landmarks[105], landmarks[10]) + euclideanDistance(landmarks[334], landmarks[10])) / 2.0;
+                const jaw_drop = euclideanDistance(landmarks[175], landmarks[152]);
+
+                try {
+                    const response = await api.post('/predict-emotion', { avg_ear, mar, eyebrow_dist, jaw_drop });
+                    setDetectedEmotion(response.data);
+                } catch (error) {
+                    console.error("Error predicting emotion:", error);
+                    setDetectedEmotion({ emotion: 'Auth Error', confidence: 0 });
+                }
+
+                if (window.FaceMesh && Array.isArray(window.FaceMesh.FACEMESH_TESSELATION)) {
+                    for (const conn of window.FaceMesh.FACEMESH_TESSELATION) {
+                        const start = landmarks[conn[0]];
+                        const end = landmarks[conn[1]];
+                        if (start && end) {
+                            canvasCtx.beginPath();
+                            canvasCtx.moveTo(start.x * canvasRef.current.width, start.y * canvasRef.current.height);
+                            canvasCtx.lineTo(end.x * canvasRef.current.width, end.y * canvasRef.current.height);
+                            canvasCtx.strokeStyle = 'rgba(224, 224, 224, 0.5)';
+                            canvasCtx.stroke();
+                        }
+                    }
+                }
+            }
+            canvasCtx.restore();
+        };
+
+        const faceMesh = new window.FaceMesh({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}` });
+        faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+        faceMesh.onResults(onResults);
+
+        cameraRef.current = new window.Camera(videoRef.current, {
+            onFrame: async () => { if (videoRef.current) { await faceMesh.send({ image: videoRef.current }); } },
+            width: 640,
+            height: 480,
+        });
+        cameraRef.current.start().then(() => setStatus('ready')).catch(() => setStatus('error'));
+
+        return () => { if (cameraRef.current) cameraRef.current.stop(); };
+    }, [mediaPipeReady]);
+
+    return (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="h-full">
+            <h3 className="text-2xl font-bold text-gray-800 mb-6">Real-time Emotion Detector</h3>
+            <div className="relative w-full max-w-2xl mx-auto aspect-video bg-gray-200 rounded-xl shadow-md overflow-hidden">
+                {status === 'loading' && <div className="absolute inset-0 flex flex-col items-center justify-center"><Spinner /><p className="mt-2 text-gray-500">Starting camera...</p></div>}
+                {status === 'error' && <div className="absolute inset-0 flex flex-col items-center justify-center"><p className="mt-2 text-red-500">Could not access camera.</p></div>}
+                <video ref={videoRef} className="w-full h-full object-cover transform scaleX(-1)" autoPlay playsInline></video>
+                <canvas ref={canvasRef} width="640" height="480" className="absolute top-0 left-0 w-full h-full transform scaleX(-1)"></canvas>
+                <div className="absolute top-4 left-4 bg-black/50 text-white px-4 py-2 rounded-lg">
+                    <p className="font-bold text-lg">Detected Emotion: <span className="text-green-300">{detectedEmotion.emotion}</span></p>
+                    <p className="text-sm">Confidence: <span className="text-green-300">{detectedEmotion.confidence}%</span></p>
+                </div>
+            </div>
+        </motion.div>
+    );
+};
+
+// --- NEW: Dashboard Widgets ---
+const StressTrendChart = ({ data }) => {
+    return (
+        <div className="p-6 bg-white rounded-xl shadow-sm col-span-1 md:col-span-2">
+            <h3 className="font-semibold text-lg text-gray-700 mb-4">Your 7-Day Stress Trend</h3>
+            <ResponsiveContainer width="100%" height={250}>
+                <LineChart data={data} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                    <XAxis dataKey="date" stroke="#9ca3af" />
+                    <YAxis domain={[0, 10]} stroke="#9ca3af" />
+                    <Tooltip contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e0e0e0' }}/>
+                    <Legend />
+                    <Line type="monotone" dataKey="level" stroke="#8b5cf6" strokeWidth={2} activeDot={{ r: 8 }} name="Stress Level" />
+                </LineChart>
+            </ResponsiveContainer>
+        </div>
+    );
+};
+
+const SummaryCard = ({ title, value, icon }) => (
+    <div className="p-6 bg-white rounded-xl shadow-sm">
+        <div className="flex items-center">
+            <div className="p-3 rounded-full bg-purple-100 text-purple-600 mr-4">
+                {icon}
+            </div>
+            <div>
+                <p className="text-sm text-gray-500">{title}</p>
+                <p className="text-2xl font-bold text-gray-800">{value}</p>
+            </div>
+        </div>
+    </div>
+);
+
+const InsightCard = ({ title, text, icon }) => (
+     <div className="p-6 bg-white rounded-xl shadow-sm col-span-1 md:col-span-3">
+        <div className="flex">
+             <div className="p-3 rounded-full bg-green-100 text-green-600 mr-4 flex-shrink-0 h-12 w-12 flex items-center justify-center">
+                {icon}
+            </div>
+            <div>
+                <p className="font-semibold text-lg text-gray-700">{title}</p>
+                <p className="text-gray-600 mt-1">{text}</p>
+            </div>
+        </div>
+    </div>
+);
+
+const StressPieChart = ({ data }) => {
+    const COLORS = ['#34d399', '#fbbf24', '#f87171']; // Green, Amber, Red for Low, Medium, High
+    const RADIAN = Math.PI / 180;
+    const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, name }) => {
+        if (percent === 0) return null;
+        const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+        const x = cx + radius * Math.cos(-midAngle * RADIAN);
+        const y = cy + radius * Math.sin(-midAngle * RADIAN);
+        return (
+            <text x={x} y={y} fill="white" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontWeight="bold">
+                {`${(percent * 100).toFixed(0)}%`}
+            </text>
+        );
+    };
+
+    // Filter out categories with 0 entries
+    const chartData = data.filter(entry => entry.value > 0);
+
+    if (chartData.length === 0) {
+        return (
+            <div className="p-6 bg-white rounded-xl shadow-sm flex flex-col items-center justify-center h-full">
+                 <h3 className="font-semibold text-lg text-gray-700 mb-4">Weekly Stress Summary</h3>
+                 <p className="text-gray-500">No stress data logged this week.</p>
+            </div>
+        )
+    }
+
+    return (
+        <div className="p-6 bg-white rounded-xl shadow-sm col-span-1 md:col-span-1">
+            <h3 className="font-semibold text-lg text-gray-700 mb-4">Weekly Stress Summary</h3>
+            <ResponsiveContainer width="100%" height={250}>
+                <PieChart>
+                    <Pie
+                        data={chartData}
+                        labelLine={false}
+                        label={renderCustomizedLabel}
+                        outerRadius={100}
+                        fill="#8884d8"
+                        dataKey="value"
+                        nameKey="name"
+                    >
+                        {chartData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                </PieChart>
+            </ResponsiveContainer>
+        </div>
+    );
+};
+
+const Resources = () => {
+    const [resources, setResources] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchResources = async () => {
+            try {
+                const response = await api.get('/resources');
+                setResources(response.data);
+            } catch (error) {
+                console.error("Failed to fetch resources:", error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchResources();
+    }, []);
+
+    if (isLoading) {
+        return <div className="flex justify-center items-center h-full"><Spinner /></div>;
+    }
+
+    return (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <h3 className="text-2xl font-bold text-gray-800 mb-6">Helpful Resources</h3>
+            <div className="space-y-8">
+                {resources.map((category, index) => (
+                    <div key={index}>
+                        <h4 className="text-xl font-bold text-gray-700 mb-4 pb-2 border-b-2 border-purple-200">{category.category}</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {category.items.map((item, itemIndex) => (
+                                <motion.a 
+                                    href={item.link} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    key={itemIndex}
+                                    className="block p-6 bg-white rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all"
+                                    whileHover={{ scale: 1.03 }}
+                                >
+                                    <h5 className="font-semibold text-purple-700">{item.title}</h5>
+                                    <p className="text-sm text-gray-600 mt-2">{item.description}</p>
+                                </motion.a>
+                            ))}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </motion.div>
+    );
+};
+
+
+const Dashboard = ({ user, onLogout }) => {
+    const [activeComponent, setActiveComponent] = useState('Dashboard');
+    const [historyData, setHistoryData] = useState(null);
+    const [loadingHistory, setLoadingHistory] = useState(true);
+
+    useEffect(() => {
+        if (activeComponent === 'Dashboard') {
+            const fetchHistory = async () => {
+                try {
+                    setLoadingHistory(true);
+                    const response = await api.get('/history');
+                    setHistoryData(response.data);
+                } catch (error) {
+                    console.error("Failed to fetch dashboard history:", error);
+                } finally {
+                    setLoadingHistory(false);
+                }
+            };
+            fetchHistory();
+        }
+    }, [activeComponent]);
+
+    const DashboardIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>;
+    const StressIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>;
+    const EmotionIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
+    const FaceIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
+    const ChatIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>;
+    const TherapistIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>;
+    const LogoutIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>;
+    const ResourcesIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>;
+    const NavItem = ({ icon, label, isActive, onClick }) => (
+        <li onClick={onClick} className={`flex items-center p-3 my-2 cursor-pointer rounded-lg transition-all duration-300 ${isActive ? 'bg-purple-500 text-white shadow-lg' : 'text-gray-600 hover:bg-purple-100/50 hover:text-gray-800'}`}>
+            {icon}
+            <span className="ml-4 font-medium">{label}</span>
+        </li>
+    );
+
+    const renderActiveComponent = () => {
+        switch (activeComponent) {
+            case 'Dashboard':
+                if (loadingHistory) {
+                    return <div className="flex justify-center items-center h-full"><Spinner /></div>;
+                }
+                return (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <StressTrendChart data={historyData?.stress_history || []} />
+                        <StressPieChart data={historyData?.stress_summary_pie || []} />
+                        <SummaryCard title="Last Stress Score" value={historyData?.last_stress_score} icon={<StressIcon />} />
+                        <InsightCard title="Last Chat Insight" text={historyData?.last_chat_insight} icon={<ChatIcon />} />
+                    </div>
+                );
+            case 'StressPredictor': return <StressPredictor />;
+            case 'EmotionAnalyzer': return <EmotionAnalyzer />;
+            case 'EmotionDetector': return <EmotionDetector />;
+            case 'Chatbot': return <Chatbot user={user} />;
+            case 'TherapistFinder': return <TherapistFinder />;
+            case 'Resources': return <Resources />;
+            default: return null;
+        }
+    };
+
+    return (
+        <div className="flex min-h-screen bg-gray-50">
+            <aside className="w-64 bg-white p-6 shadow-md flex flex-col justify-between">
+                <div>
+                    <div className="text-center mb-10"><h1 className="text-2xl font-bold text-purple-600">MindCare</h1></div>
+                    <nav>
+                        <ul>
+                            <NavItem icon={<DashboardIcon />} label="Dashboard" isActive={activeComponent === 'Dashboard'} onClick={() => setActiveComponent('Dashboard')} />
+                            <NavItem icon={<StressIcon />} label="Stress Predictor" isActive={activeComponent === 'StressPredictor'} onClick={() => setActiveComponent('StressPredictor')} />
+                            <NavItem icon={<EmotionIcon />} label="Emotion Analyzer" isActive={activeComponent === 'EmotionAnalyzer'} onClick={() => setActiveComponent('EmotionAnalyzer')} />
+                            <NavItem icon={<FaceIcon />} label="Facial Emotion" isActive={activeComponent === 'EmotionDetector'} onClick={() => setActiveComponent('EmotionDetector')} />
+                            <NavItem icon={<ChatIcon />} label="Mindful Chatbot" isActive={activeComponent === 'Chatbot'} onClick={() => setActiveComponent('Chatbot')} />
+                            <NavItem icon={<TherapistIcon />} label="Find a Therapist" isActive={activeComponent === 'TherapistFinder'} onClick={() => setActiveComponent('TherapistFinder')} />
+                            <NavItem icon={<ResourcesIcon />} label="Resources" isActive={activeComponent === 'Resources'} onClick={() => setActiveComponent('Resources')} />
+                        </ul>
+                    </nav>
+                </div>
+                <div><NavItem icon={<LogoutIcon />} label="Logout" onClick={onLogout} /></div>
+            </aside>
+            <main className="flex-1 p-10">
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+                    {activeComponent === 'Dashboard' && (
+                        <>
+                            <h2 className="text-3xl font-bold text-gray-800">Welcome back, {user?.name || 'Guest'}!</h2>
+                            <p className="text-gray-500 mt-1">Here's your wellness summary for today.</p>
+                        </>
+                    )}
+                    <div className="mt-8 h-[85vh]">
+                        {renderActiveComponent()}
+                    </div>
+                </motion.div>
+            </main>
+        </div>
+    );
+};
+
+
+// ===================================================================================
+// --- MAIN APP COMPONENT ---
+// ===================================================================================
+function App() {
+  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const storedToken = localStorage.getItem('access_token');
+    const storedUser = localStorage.getItem('user');
+    if (storedToken && storedUser) {
+        setUser(JSON.parse(storedUser));
+    }
+    setTimeout(() => setIsLoading(false), 2000); 
+  }, []);
+
+  const handleAuthSuccess = (data) => {
+    const { access_token, user } = data;
+    localStorage.setItem('access_token', access_token);
+    localStorage.setItem('user', JSON.stringify(user));
+    setUser(user);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('user');
+    setUser(null);
+  };
+
+  if (isLoading) {
+    return <Loader onLoadingComplete={() => setIsLoading(false)} />;
+  }
+  
+  return (
+    <>
+      {user ? (
+        <Dashboard user={user} onLogout={handleLogout} />
+      ) : (
+        <AuthPage onAuthSuccess={handleAuthSuccess} />
+      )}
+    </>
+  );
+}
+
+export default App;

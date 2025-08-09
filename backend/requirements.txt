@@ -1,0 +1,10 @@
+Flask
+Flask-Cors
+numpy
+tensorflow
+scikit-learn
+joblib
+transformers
+torch
+pymongo
+requests
