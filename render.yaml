@@ -7,10 +7,12 @@ services:
     buildCommand: "pip install -r requirements.txt"
     startCommand: "gunicorn app:app"
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.9.9 # Or your preferred Python version
-      # FIX: Declare secret keys without values.
-      # Render will prompt you to enter these in the UI.
-      - key: FOURSQUARE_API_KEY
-      - key: JWT_SECRET_KEY
-      - key: MONGO_URI
+  - key: PYTHON_VERSION
+    value: 3.9.9
+  - key: FOURSQUARE_API_KEY
+    value: ""
+  - key: JWT_SECRET_KEY
+    value: ""
+  - key: MONGO_URI
+    value: ""
+
