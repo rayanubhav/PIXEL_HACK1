@@ -2,17 +2,16 @@ services:
   - type: web
     name: mindcare-backend
     env: python
-    rootDir: backend # <-- ADD THIS LINE
+    rootDir: backend
     plan: free
     buildCommand: "pip install -r requirements.txt"
     startCommand: "gunicorn app:app"
     envVars:
-  - key: PYTHON_VERSION
-    value: 3.9.9
-  - key: FOURSQUARE_API_KEY
-    value: ""
-  - key: JWT_SECRET_KEY
-    value: ""
-  - key: MONGO_URI
-    value: ""
-
+      - key: PYTHON_VERSION
+        value: "3.9.9"
+      - key: FOURSQUARE_API_KEY
+        value: ""
+      - key: JWT_SECRET_KEY
+        value: ""
+      - key: MONGO_URI
+        value: ""
