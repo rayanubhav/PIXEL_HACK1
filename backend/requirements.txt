@@ -11,3 +11,4 @@ requests
 Flask-Bcrypt
 Flask-JWT-Extended
 gunicorn
+python-dotenv
