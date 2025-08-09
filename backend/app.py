@@ -32,44 +32,49 @@ jwt = JWTManager(app)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ===================================================================================
-# --- MODEL LOADING ---
-# ===================================================================================
+# Model Loading Lazy Loadings
+stress_model = None
+stress_scaler = None
+chatbot_model = None
+chatbot_tokenizer = None
+facial_emotion_model = None
+facial_emotion_labels = {0: 'Angry', 1: 'Disgust', 2: 'Fear', 3: 'Happy', 4: 'Sad', 5: 'Surprise', 6: 'Neutral'}
 
-# --- 1. Load Stress Prediction Model & Scaler ---
-try:
-    stress_model = tf.keras.models.load_model("stress_model.h5")
-    stress_scaler = joblib.load("scaler.pkl")
-    logger.info("✅ Stress prediction model and scaler loaded successfully.")
-except Exception as e:
-    logger.error(f"❌ Error loading stress model or scaler: {e}")
-    stress_model = None
-    stress_scaler = None
+def load_stress_model():
+    global stress_model, stress_scaler
+    if stress_model is None:
+        logger.info("🌀 Loading stress prediction model for the first time...")
+        try:
+            stress_model = tf.keras.models.load_model("stress_model.h5")
+            stress_scaler = joblib.load("scaler.pkl")
+            logger.info("✅ Stress prediction model and scaler loaded successfully.")
+        except Exception as e:
+            logger.error(f"❌ Error loading stress model or scaler: {e}")
 
-# --- 2. Load Chatbot Emotion Model & Tokenizer ---
-try:
-    # Ensure you have the fine-tuned model files in a directory named 'fine_tuned_model'
-    chatbot_model = DistilBertForSequenceClassification.from_pretrained("./fine_tuned_model")
-    chatbot_tokenizer = DistilBertTokenizer.from_pretrained("./fine_tuned_model")
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    chatbot_model.to(device)
-    chatbot_model.eval()
-    logger.info(f"✅ Chatbot model loaded successfully on {device}.")
-except Exception as e:
-    logger.error(f"❌ Error loading chatbot model: {e}")
-    chatbot_model = None
-    chatbot_tokenizer = None
-    
-# --- 3. Load Facial Emotion Detection Model ---
-try:
-    emotion_model_filename = 'emotion_classifier_rf_TUNED.joblib'
-    facial_emotion_model = joblib.load(emotion_model_filename)
-    # This dictionary maps the model's integer output to a human-readable emotion
-    facial_emotion_labels = {0: 'Angry', 1: 'Disgust', 2: 'Fear', 3: 'Happy', 4: 'Sad', 5: 'Surprise', 6: 'Neutral'}
-    logger.info(f"✅ Facial emotion detection model loaded from: {emotion_model_filename}")
-except Exception as e:
-    logger.error(f"❌ Error loading facial emotion model: {e}")
-    facial_emotion_model = None
+def load_chatbot_model():
+    global chatbot_model, chatbot_tokenizer
+    if chatbot_model is None:
+        logger.info("🌀 Loading chatbot model for the first time...")
+        try:
+            chatbot_model = DistilBertForSequenceClassification.from_pretrained("./fine_tuned_model")
+            chatbot_tokenizer = DistilBertTokenizer.from_pretrained("./fine_tuned_model")
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            chatbot_model.to(device)
+            chatbot_model.eval()
+            logger.info(f"✅ Chatbot model loaded successfully on {device}.")
+        except Exception as e:
+            logger.error(f"❌ Error loading chatbot model: {e}")
+
+def load_facial_emotion_model():
+    global facial_emotion_model
+    if facial_emotion_model is None:
+        logger.info("🌀 Loading facial emotion model for the first time...")
+        try:
+            emotion_model_filename = 'emotion_classifier_rf_TUNED.joblib'
+            facial_emotion_model = joblib.load(emotion_model_filename)
+            logger.info(f"✅ Facial emotion detection model loaded from: {emotion_model_filename}")
+        except Exception as e:
+            logger.error(f"❌ Error loading facial emotion model: {e}")
 
 
 # --- MongoDB Setup for Chat Logs ---
@@ -278,10 +283,11 @@ def login():
 @app.route("/api/predict-stress", methods=["POST"])
 @jwt_required()
 def predict_stress_route():
-    current_user_id = get_jwt_identity()
+    load_stress_model() # Ensure model is loaded before use
     if not stress_model or not stress_scaler:
-        return jsonify({"error": "Stress model is not available."}), 500
+        return jsonify({"error": "Stress model is not available or failed to load."}), 503
 
+    current_user_id = get_jwt_identity()
     data = request.json
     features = np.array([[float(data["heart_rate"]), float(data["steps"]), float(data["sleep"]), float(data["age"])]])
     scaled_features = stress_scaler.transform(features)
@@ -296,7 +302,6 @@ def predict_stress_route():
         "timestamp": datetime.utcnow()
     })
     
-    # --- UPDATED RESPONSE ---
     category = 'low'
     if 4 <= stress_level <= 6:
         category = 'medium'
@@ -309,20 +314,19 @@ def predict_stress_route():
         {"type": "Music", **suggestion_library[category]["Music"]},
     ]
 
-    logger.info(f"Stress prediction for user {current_user_id} saved. Level: {stress_level}")
     return jsonify({
         "stress_level": stress_level,
         "suggestions": suggestions
     })
 
-
 @app.route("/api/chat", methods=["POST"])
 @jwt_required()
 def chat_route():
-    current_user_id = get_jwt_identity()
+    load_chatbot_model() # Ensure model is loaded before use
     if not chatbot_model or not chatbot_tokenizer:
-        return jsonify({"error": "Chatbot model not available."}), 500
+        return jsonify({"error": "Chatbot model is not available or failed to load."}), 503
     
+    current_user_id = get_jwt_identity()
     data = request.json
     message_text = data["message"]
     
@@ -333,7 +337,7 @@ def chat_route():
     probabilities = torch.softmax(logits, dim=1).cpu().numpy()[0]
     predicted_class_id = np.argmax(probabilities)
     emotion = {0: "positive", 1: "negative"}.get(predicted_class_id, "unknown")
-    response_text = random.choice({ "positive": ["That's wonderful to hear!"], "negative": ["I'm sorry to hear that."] }.get(emotion, ["I'm here to listen."]))
+    response_text = random.choice(coping_strategies.get(emotion, ["I'm here to listen. Tell me more."]))
 
     chat_logs_collection.insert_one({
         "user_id": ObjectId(current_user_id), "user_message": message_text, "ai_response": response_text,
@@ -344,31 +348,18 @@ def chat_route():
 @app.route("/api/predict-emotion", methods=["POST"])
 @jwt_required()
 def predict_emotion_route():
+    load_facial_emotion_model() # Ensure model is loaded before use
     if not facial_emotion_model:
-        return jsonify({"error": "Facial emotion model is not available. Check server logs."}), 500
-        
-    try:
-        data = request.json
-        # The frontend will calculate these features and send them in the request body
-        feature_vector = np.array([[
-            data['avg_ear'],
-            data['mar'],
-            data['eyebrow_dist'],
-            data['jaw_drop']
-        ]])
+        return jsonify({"error": "Facial emotion model is not available or failed to load."}), 503
+    
+    data = request.json
+    feature_vector = np.array([[data['avg_ear'], data['mar'], data['eyebrow_dist'], data['jaw_drop']]])
+    predicted_class = facial_emotion_model.predict(feature_vector)[0]
+    emotion = facial_emotion_labels[predicted_class]
+    prediction_proba = facial_emotion_model.predict_proba(feature_vector)[0]
+    confidence = round(max(prediction_proba) * 100, 2)
 
-        predicted_class = facial_emotion_model.predict(feature_vector)[0]
-        emotion = facial_emotion_labels[predicted_class]
-        
-        prediction_proba = facial_emotion_model.predict_proba(feature_vector)[0]
-        confidence = round(max(prediction_proba) * 100, 2)
-
-        logger.info(f"Facial emotion prediction: {emotion} ({confidence}%)")
-        return jsonify({"emotion": emotion, "confidence": confidence})
-
-    except Exception as e:
-        logger.error(f"Error in /api/predict-emotion: {e}")
-        return jsonify({"error": "An error occurred during emotion prediction."}), 400
+    return jsonify({"emotion": emotion, "confidence": confidence})
 
 # ===================================================================================
 # --- NEW: THERAPIST FINDER ROUTE ---
