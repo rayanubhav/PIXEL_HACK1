@@ -594,6 +594,7 @@ def get_resources():
     return jsonify(resources_data), 200
 
 if __name__ == "__main__":
-    # Use 0.0.0.0 to make it accessible on your local network, and set port to 5001
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    # Use Render's provided PORT or default to 5000 locally
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
 
