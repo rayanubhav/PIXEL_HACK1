@@ -8,5 +8,6 @@ transformers
 torch
 pymongo
 requests
-flask-bcrypt
+Flask-Bcrypt
+Flask-JWT-Extended
 gunicorn
