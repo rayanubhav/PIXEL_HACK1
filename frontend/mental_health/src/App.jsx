@@ -89,9 +89,11 @@ const AuthPage = ({ onAuthSuccess }) => {
         e.preventDefault();
         setError('');
         setIsLoading(true);
-        const url = isLoginView ? 'http://localhost:5001/api/auth/login' : 'http://localhost:5001/api/auth/register';
+        // FIX: Use relative paths, as the baseURL is now set in the 'api' instance
+        const url = isLoginView ? '/auth/login' : '/auth/register';
         try {
-            const response = await axios.post(url, formData);
+            // FIX: Use the 'api' instance for the request
+            const response = await api.post(url, formData);
             onAuthSuccess(response.data);
         } catch (err) {
             setError(err.response?.data?.msg || 'An error occurred.');
@@ -100,12 +102,9 @@ const AuthPage = ({ onAuthSuccess }) => {
         }
     };
 
-    const formVariants = { hidden: { opacity: 0, y: 50 }, visible: { opacity: 1, y: 0, transition: { duration: 0.5 } } };
-    const nameInputVariants = { hidden: { opacity: 0, height: 0, marginTop: 0 }, visible: { opacity: 1, height: 'auto', marginTop: '1rem' }, exit: { opacity: 0, height: 0, marginTop: 0 } };
-
     return (
         <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-100 via-purple-100 to-gray-50">
-            <motion.div className="w-full max-w-md p-8 space-y-6 bg-white/70 backdrop-blur-lg rounded-2xl shadow-lg border border-white/30" variants={formVariants} initial="hidden" animate="visible">
+            <motion.div className="w-full max-w-md p-8 space-y-6 bg-white/70 backdrop-blur-lg rounded-2xl shadow-lg border border-white/30">
                 <div className="text-center">
                     <h1 className="text-3xl font-bold text-gray-800">{isLoginView ? 'Welcome Back' : 'Create Your Account'}</h1>
                     <p className="mt-2 text-gray-500">{isLoginView ? 'Log in to continue your journey' : 'Start your path to wellness today'}</p>
@@ -113,7 +112,7 @@ const AuthPage = ({ onAuthSuccess }) => {
                 <form className="space-y-4" onSubmit={handleSubmit}>
                     <AnimatePresence>
                         {!isLoginView && (
-                            <motion.div key="name-input" variants={nameInputVariants} initial="hidden" animate="visible" exit="exit" className="relative">
+                            <motion.div key="name-input" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="relative">
                                 <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><UserIcon /></div>
                                 <input type="text" name="name" placeholder="Full Name" value={formData.name} onChange={handleInputChange} required={!isLoginView} className="w-full pl-10 pr-3 py-2 bg-white/80 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-300 outline-none" />
                             </motion.div>
