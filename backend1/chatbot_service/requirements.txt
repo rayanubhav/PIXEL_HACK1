@@ -1,0 +1,6 @@
+Flask
+gunicorn
+transformers
+torch
+scikit-learn
+python-dotenv
