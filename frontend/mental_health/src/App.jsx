@@ -10,7 +10,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 // It automatically attaches the user's authentication token to every request.
 // ===================================================================================
 const api = axios.create({
-    baseURL: 'https://mindcare-backend-4u3f.onrender.com/api',
+    baseURL: 'https://mindcare-api-gateway.onrender.com/api',
 });
 
 api.interceptors.request.use(
