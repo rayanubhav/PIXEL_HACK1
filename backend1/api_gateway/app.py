@@ -16,7 +16,12 @@ load_dotenv()
 # --- App Initialization ---
 app = Flask(__name__)
 # In production, you should restrict this to your Netlify URL
-CORS(app, origins=["https://mindcare3.netlify.app", "http://localhost:3000"]) 
+CORS(app, 
+     origins=["https://mindcare3.netlify.app", "http://localhost:3000"],
+     supports_credentials=True,
+     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+     allow_headers=["Content-Type", "Authorization"])
+ 
 
 # --- Configuration ---
 app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY")
