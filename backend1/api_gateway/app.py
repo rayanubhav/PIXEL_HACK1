@@ -22,6 +22,15 @@ CORS(app,
      methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
      allow_headers=["Content-Type", "Authorization"])
  
+# ===== DEMO MODE =====
+def demo_jwt_required(fn):
+    return fn
+
+jwt_required = demo_jwt_required
+
+def get_jwt_identity():
+    # Return a dummy user ID so DB queries don't break
+    return "000000000000000000000000"
 
 # --- Configuration ---
 app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY")
