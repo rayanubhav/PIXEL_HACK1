@@ -10,9 +10,9 @@ __pycache__/
 .vscode/
 .idea/
 
-# Model and large files (keep them in Google Drive or Git LFS instead)
-*.h5
-*.pkl
-*.joblib
-*.json
-*.safetensors
+# # Model and large files (keep them in Google Drive or Git LFS instead)
+# *.h5
+# *.pkl
+# *.joblib
+# *.json
+# *.safetensors
