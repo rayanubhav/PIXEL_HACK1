@@ -23,14 +23,18 @@ CORS(app,
      allow_headers=["Content-Type", "Authorization"])
  
 # ===== DEMO MODE =====
-def demo_jwt_required(fn):
-    return fn
+# ===== DEMO MODE (disables JWT for all routes) =====
+def demo_jwt_required(*args, **kwargs):
+    def wrapper(fn):
+        return fn
+    return wrapper
 
 jwt_required = demo_jwt_required
 
 def get_jwt_identity():
-    # Return a dummy user ID so DB queries don't break
+    # Return a dummy user ID so routes using it don't fail
     return "000000000000000000000000"
+
 
 # --- Configuration ---
 app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY")
