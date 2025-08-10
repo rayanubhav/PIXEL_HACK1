@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Create an instance of axios
 const api = axios.create({
-    baseURL: 'http://localhost:5001/api', // Your Flask backend URL
+    baseURL: 'https://mindcare-backend-4u3f.onrender.com/api', // Your Flask backend URL
 });
 
 /* INTERCEPTOR:
